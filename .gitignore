@@ -1,0 +1,15 @@
+# Kataloger att ignorera
+/vendor/
+/node_modules/
+/.idea/
+/.vscode/
+/__pycache__/
+
+# Filtyper att ignorera
+*.log
+*.bak
+*.tmp
+*.sqlite
+*.env
+.DS_Store
+Thumbs.db

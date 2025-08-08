@@ -1,0 +1,29 @@
+{
+	"folders": [
+		{
+			"path": "../../ifaf"
+		},
+		{
+			"path": "../../s57703_ifaf"
+		},
+		{
+			"path": "../../s57703_info"
+		},
+		{
+			"path": "../../giants"
+		},
+		{
+			"path": "../../protokoll"
+		},
+		{
+			"path": "../../domare_resa"
+		},
+		{
+			"path": "../../scoreboard"
+		},
+		{
+			"path": ".."
+		}
+	],
+	"settings": {}
+}

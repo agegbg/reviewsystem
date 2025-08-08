@@ -5,7 +5,7 @@ session_start();
 // Unset all session variables
 $_SESSION = [];
 
-// Destroy the session
+// Destroy the session 
 session_destroy();
 
 // Optional: delete session cookie (extra säkerhet)

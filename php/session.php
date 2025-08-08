@@ -5,7 +5,7 @@ session_start();
 // ==============================================
 // Configuration: Set to true to require login
 // ==============================================
-$requireLoginGlobally = false;
+$requireLoginGlobally = true;
 
 // ==============================================
 // Redirect to login page if login is required
@@ -13,7 +13,7 @@ $requireLoginGlobally = false;
 // ==============================================
 if ($requireLoginGlobally && !isset($_SESSION['user_id'])) {
     // Change this path if your login file is located elsewhere
-    header("Location: /dt/00_login.php");
+    header("Location: ./00_login.php");
     exit;
 }
 

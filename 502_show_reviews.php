@@ -1,5 +1,13 @@
 <?php
+// Start the session and optionally enforce login (controlled via php/session.php)
+require_once 'php/session.php';
+
+// Load database connection (PDO with utf8mb4)
 require_once 'php/db.php';
+
+// Add file info to database for menu/system tracking
+require_once 'php/file_register.php';
+
 $pdo = getDatabaseConnection();
 
 $game_id = $_GET['game_id'] ?? 0;

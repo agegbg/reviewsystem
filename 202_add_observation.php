@@ -7,9 +7,7 @@ require_once 'php/db.php';
 
 // Register this file in web_files for menu/admin usage
 require_once 'php/file_register.php';
-updateFileInfo(basename(__FILE__), 'Beskrivning av vad denna fil gör');
-
-
+updateFileInfo(basename(__FILE__), 'Add observation to game and evaluation, including internal flags');
 
 $pdo = getDatabaseConnection();
 
@@ -29,6 +27,13 @@ $stmt->execute([$game_id]);
 $game = $stmt->fetch(PDO::FETCH_ASSOC);
 $home_name = $game['home_name'] ?? 'Home';
 $away_name = $game['away_name'] ?? 'Away';
+
+// Stängd för review?
+if (!empty($game['is_finished'])) {
+
+    echo '<div class="alert alert-warning">⚠️ This game is closed for review. No new observations can be added.</div>';
+    exit;
+}
 
 // Hämta crew
 $stmt = $pdo->prepare("SELECT * FROM review_crew WHERE game_id = ?");
@@ -71,12 +76,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         isset($_POST['education_clip']) ? 1 : 0,
         $_POST['education_comment'] ?? ''
     ]);
+
+    $observation_id = $pdo->lastInsertId();
+
+    // Spara intern kommentar om markerad
+    if (isset($_POST['not_ready'])) {
+        $stmt = $pdo->prepare("
+            INSERT INTO review_observation_private (observation_id, user_id, not_ready_comment, create_date, update_date)
+            VALUES (?, ?, ?, NOW(), NOW())
+        ");
+        $stmt->execute([$observation_id, $_SESSION['user_id'], $_POST['not_ready_comment'] ?? '']);
+    }
+
     header("Location: 202_add_observation.php?game_id=$game_id&evaluation_id=$evaluation_id");
     exit;
 }
 
-// Hämta tidigare observationer
-$stmt = $pdo->prepare("SELECT * FROM review_observation WHERE evaluation_id = ? ORDER BY time ASC");
+// Hämta tidigare observationer + om 🔒 flagga finns
+$stmt = $pdo->prepare("
+    SELECT o.*, p.id AS private_flag
+    FROM review_observation o
+    LEFT JOIN review_observation_private p ON o.id = p.observation_id
+    WHERE o.evaluation_id = ?
+    ORDER BY o.time ASC
+");
 $stmt->execute([$evaluation_id]);
 $observations = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
@@ -122,6 +145,12 @@ $observations = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <strong><?= htmlspecialchars($away_name) ?></strong>
         </div>
     </div>
+
+    <?php if ($_SESSION['user_id'] == 1): ?>
+        <a href="206_toggle_review.php?game_id=<?= $game_id ?>" class="btn btn-warning float-right mb-2">
+            <?= $game['is_closed'] ? '🔓 Open for review' : '🔒 Close for review' ?>
+        </a>
+    <?php endif; ?>
 
     <form method="post" autocomplete="off">
         <input type="hidden" name="game_id" value="<?= $game_id ?>">
@@ -172,8 +201,7 @@ $observations = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <select name="foul_team" class="form-control">
                     <option value="">–</option>
                     <option value="<?= $game['home_team_id'] ?>"><?= htmlspecialchars($home_name) ?></option>
-<option value="<?= $game['away_team_id'] ?>"><?= htmlspecialchars($away_name) ?></option>
-
+                    <option value="<?= $game['away_team_id'] ?>"><?= htmlspecialchars($away_name) ?></option>
                 </select>
             </div>
             <div class="form-group col-md-6">
@@ -197,6 +225,16 @@ $observations = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <textarea name="education_comment" class="form-control" rows="2" placeholder="Explain why it's educational"></textarea>
         </div>
 
+        <div class="form-group form-check mt-4">
+            <input type="checkbox" class="form-check-input" name="not_ready" id="not_ready" onclick="toggleNotReadyComment()">
+            <label class="form-check-label" for="not_ready">Review not ready (internal note)</label>
+        </div>
+
+        <div class="form-group" id="notReadyCommentGroup" style="display:none;">
+            <label>Internal Comment</label>
+            <textarea name="not_ready_comment" class="form-control" rows="2" placeholder="Describe what needs follow-up"></textarea>
+        </div>
+
         <button type="submit" class="btn btn-success">💾 Save Observation</button>
     </form>
 
@@ -214,7 +252,10 @@ $observations = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <td><?= htmlspecialchars($o['play_type']) ?></td>
                 <td><?= htmlspecialchars($o['foul']) ?></td>
                 <td><?= htmlspecialchars($o['grading']) ?></td>
-                <td><?= htmlspecialchars($o['comment']) ?></td>
+                <td>
+                    <?= $o['private_flag'] ? '🔒 ' : '' ?>
+                    <?= htmlspecialchars($o['comment']) ?>
+                </td>
                 <td>
                     <div class="btn-group btn-group-sm">
                         <a href="204_edit_observation.php?id=<?= $o['id'] ?>" class="btn btn-primary">Edit</a>
@@ -234,6 +275,7 @@ const gradingOptions = {
     "Judgement": { "IJ": "Incorrect Judgement", "CJ": "Correct Judgement", "PR": "Positive Remark", "NR": "Negative Remark" },
     "Rules": { "IR": "Incorrect Rules Application", "PR": "Positive Remark", "NR": "Negative Remark" }
 };
+
 function updateGrading(type) {
     const grading = document.getElementById('grading');
     grading.innerHTML = '';
@@ -248,10 +290,17 @@ function updateGrading(type) {
     document.getElementById('foulGroup').style.display = foulVisible ? 'block' : 'none';
     document.getElementById('foulExtras').style.display = foulVisible ? 'flex' : 'none';
 }
+
 function toggleEduComment() {
     document.getElementById('eduCommentGroup').style.display =
         document.getElementById('education_clip').checked ? 'block' : 'none';
 }
+
+function toggleNotReadyComment() {
+    document.getElementById('notReadyCommentGroup').style.display =
+        document.getElementById('not_ready').checked ? 'block' : 'none';
+}
+
 updateGrading('Mechanics');
 
 document.getElementById('foul').addEventListener('input', function () {

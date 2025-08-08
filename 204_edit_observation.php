@@ -7,14 +7,20 @@ require_once 'php/db.php';
 
 // Register this file in web_files for menu/admin usage
 require_once 'php/file_register.php';
-updateFileInfo(basename(__FILE__), 'Beskrivning av vad denna fil gör')
+updateFileInfo(basename(__FILE__), 'Edit observation and handle internal not ready flags');
 
 $pdo = getDatabaseConnection();
 
 $id = $_GET['id'] ?? 0;
 if (!$id) die("Missing observation ID");
 
-$stmt = $pdo->prepare("SELECT * FROM review_observation WHERE id = ?");
+// Fetch observation + optional private comment
+$stmt = $pdo->prepare("
+    SELECT o.*, p.not_ready_comment, p.id AS private_id
+    FROM review_observation o
+    LEFT JOIN review_observation_private p ON o.id = p.observation_id
+    WHERE o.id = ?
+");
 $stmt->execute([$id]);
 $obs = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$obs) die("Observation not found");
@@ -22,7 +28,7 @@ if (!$obs) die("Observation not found");
 $game_id = $obs['game_id'];
 $evaluation_id = $obs['evaluation_id'];
 
-// Hämta laginfo
+// Fetch teams
 $stmt = $pdo->prepare("
     SELECT g.*, t1.name AS home_name, t2.name AS away_name
     FROM review_game g
@@ -35,7 +41,7 @@ $game = $stmt->fetch(PDO::FETCH_ASSOC);
 $home_name = $game['home_name'] ?? 'Home';
 $away_name = $game['away_name'] ?? 'Away';
 
-// Hämta crew-positioner
+// Crew positions
 $stmt = $pdo->prepare("SELECT * FROM review_crew WHERE game_id = ?");
 $stmt->execute([$game_id]);
 $crew = $stmt->fetch(PDO::FETCH_ASSOC) ?? [];
@@ -51,7 +57,7 @@ foreach ($positionMap as $field => $label) {
 $positions[] = 'Crew';
 $selected_positions = explode(',', $obs['position']);
 
-// Uppdatera
+// Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $position_string = implode(',', $_POST['positions'] ?? []);
     $stmt = $pdo->prepare("
@@ -73,10 +79,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_POST['education_comment'] ?? '',
         $id
     ]);
+
+    // Handle Review Not Ready
+    $notReadyChecked = isset($_POST['not_ready']);
+    $notReadyComment = $_POST['not_ready_comment'] ?? '';
+
+    if ($notReadyChecked && !$obs['private_id']) {
+        $stmt = $pdo->prepare("INSERT INTO review_observation_private (observation_id, user_id, not_ready_comment, create_date, update_date) VALUES (?, ?, ?, NOW(), NOW())");
+        $stmt->execute([$id, $_SESSION['user_id'], $notReadyComment]);
+    } elseif ($notReadyChecked && $obs['private_id']) {
+        $stmt = $pdo->prepare("UPDATE review_observation_private SET not_ready_comment = ?, update_date = NOW() WHERE id = ?");
+        $stmt->execute([$notReadyComment, $obs['private_id']]);
+    } elseif (!$notReadyChecked && $obs['private_id']) {
+        $stmt = $pdo->prepare("DELETE FROM review_observation_private WHERE id = ?");
+        $stmt->execute([$obs['private_id']]);
+    }
+
     header("Location: 202_add_observation.php?game_id=$game_id&evaluation_id=$evaluation_id&updated=1");
     exit;
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="sv">
 <head>
@@ -179,6 +202,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                       rows="2"><?= htmlspecialchars($obs['education_comment']) ?></textarea>
         </div>
 
+        <div class="form-group form-check mt-4">
+            <input type="checkbox" class="form-check-input" name="not_ready" id="not_ready"
+                   <?= $obs['private_id'] ? 'checked' : '' ?> onclick="toggleNotReadyComment()">
+            <label class="form-check-label" for="not_ready">Review not ready (internal note)</label>
+        </div>
+
+        <div class="form-group" id="notReadyCommentGroup" style="display:none;">
+            <label>Internal Comment</label>
+            <textarea name="not_ready_comment" class="form-control"
+                      rows="2"><?= htmlspecialchars($obs['not_ready_comment'] ?? '') ?></textarea>
+        </div>
+
         <button type="submit" class="btn btn-success">💾 Save</button>
         <a href="202_add_observation.php?game_id=<?= $game_id ?>&evaluation_id=<?= $evaluation_id ?>" class="btn btn-secondary">Back</a>
     </form>
@@ -206,12 +241,20 @@ function updateGrading(type) {
     document.getElementById('foulGroup').style.display = foulVisible ? 'block' : 'none';
     document.getElementById('foulExtras').style.display = foulVisible ? 'flex' : 'none';
 }
+
 function toggleEduComment() {
     document.getElementById('eduCommentGroup').style.display =
         document.getElementById('education_clip').checked ? 'block' : 'none';
 }
+
+function toggleNotReadyComment() {
+    document.getElementById('notReadyCommentGroup').style.display =
+        document.getElementById('not_ready').checked ? 'block' : 'none';
+}
+
 updateGrading("<?= $obs['play_type'] ?>");
 if (<?= (int)$obs['education_clip'] ?>) toggleEduComment();
+if (<?= $obs['private_id'] ? 'true' : 'false' ?>) toggleNotReadyComment();
 
 document.getElementById('foul').addEventListener('input', function () {
     const query = this.value;

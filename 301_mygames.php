@@ -1,8 +1,14 @@
 <?php
 // 301_mygames.php – Shows all games where user is in referee crew and allows review
 
+// Start the session and optionally enforce login (controlled via php/session.php)
 require_once 'php/session.php';
+
+// Load database connection (PDO with utf8mb4)
 require_once 'php/db.php';
+
+// Add file info to database for menu/system tracking
+require_once 'php/file_register.php';
 $pdo = getDatabaseConnection();
 
 $user_id = $_SESSION['user_id'] ?? 0;

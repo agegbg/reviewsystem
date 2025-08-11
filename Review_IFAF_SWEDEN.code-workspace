@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../s57703_ifaf"
+		},
+		{
+			"path": "../stats_flag"
+		},
+		{
+			"path": "../flag_score"
+		}
+	],
+	"settings": {}
+}

@@ -102,6 +102,9 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$evaluation_id]);
 $observations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Include shared footer (version, copyright, JS, Matomo slot)
+require_once __DIR__ . '/php/footer.php';
 ?>
 
 <!DOCTYPE html>

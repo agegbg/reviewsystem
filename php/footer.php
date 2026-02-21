@@ -1,37 +1,28 @@
 <?php
-/**
- * footer.php
- * Common closing tags and JS includes.
- *
- * Usage:
- *   $EXTRA_FOOT = '<script>console.log("page ready")</script>';
- *   require_once __DIR__ . '/footer.php';
- */
-if (!isset($EXTRA_FOOT)) { $EXTRA_FOOT = ''; }
+// php/footer.php
+declare(strict_types=1);
 ?>
+    <footer style="margin-top:2em; text-align:center; font-size:0.85em; color:#666;">
+        <hr>
+        <div>&copy; <?= date('Y') ?> My Football System</div>
+        <div>Version 1.0.0</div>
+    </footer>
 
-  <!-- Optional per-page scripts -->
-  <?= $EXTRA_FOOT ?>
+    <!-- Matomo -->
+    <script>
+      var _paq = window._paq = window._paq || [];
+      /* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+      _paq.push(['trackPageView']);
+      _paq.push(['enableLinkTracking']);
+      (function() {
+        var u="//www.zebras.se/matomo/";
+        _paq.push(['setTrackerUrl', u+'matomo.php']);
+        _paq.push(['setSiteId', '3']);
+        var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+        g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+      })();
+    </script>
+    <!-- End Matomo Code -->
 
-  <!-- Bootstrap JS (with Popper & minimal jQuery for BS4 tooltips/dropdowns) -->
-  <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
-  <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
-
-  <!-- Matomo Analytics -->
-  <script>
-    var _paq = window._paq = window._paq || [];
-    _paq.push(['trackPageView']);
-    _paq.push(['enableLinkTracking']);
-    (function() {
-      var u="//www.zebras.se/matomo/";
-      _paq.push(['setTrackerUrl', u+'matomo.php']);
-      _paq.push(['setSiteId', '1']);
-      var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
-      g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
-    })();
-  </script>
-  <!-- End Matomo Code -->
-
-</body>
+  </body>
 </html>

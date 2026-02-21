@@ -13,3 +13,10 @@
 *.env
 .DS_Store
 Thumbs.db
+
+# Local workspace / tooling
+*.code-workspace
+
+# Uploads / generated content
+/photo/
+/backup/

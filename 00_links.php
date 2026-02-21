@@ -15,7 +15,7 @@
             font-size: 1em;
             display: block;
             margin-bottom: 5px;
-            word-break: break-all;
+            word-break: break-all; 
         }
         .file-section {
             margin-bottom: 30px;

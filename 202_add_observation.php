@@ -41,14 +41,37 @@ $stmt->execute([$game_id]);
 $crew = $stmt->fetch(PDO::FETCH_ASSOC) ?? [];
 
 $positionMap = [
-    'referee_id' => 'R', 'umpire_id' => 'Ump', 'hl_id' => 'HL', 'lj_id' => 'LJ',
-    'sj_id' => 'SJ', 'fj_id' => 'FJ', 'bj_id' => 'BJ', 'cj_id' => 'C'
+    'referee_id' => 'R',
+     'cj_id' => 'C',
+    'umpire_id' => 'U',
+    'hl_id' => 'DJ', // ← visa DJ
+    'lj_id' => 'LJ',
+     'fj_id' => 'FJ',
+    'sj_id' => 'SJ',
+     'bj_id' => 'BJ'
+   
 ];
 $positions = [];
 foreach ($positionMap as $field => $label) {
     if (!empty($crew[$field])) $positions[] = $label;
 }
 $positions[] = 'Crew';
+
+$names = [];
+foreach ($positionMap as $field => $label) {
+    $id = $crew[$field] ?? null;
+    if ($id) {
+        $stmt = $pdo->prepare("SELECT name FROM review_user WHERE id = ?");
+        $stmt->execute([$id]);
+        $fullName = $stmt->fetchColumn();
+        $names[$label] = explode(' ', trim($fullName))[0]; // Förnamn
+    } else {
+        $names[$label] = '';
+    }
+}
+$names['Crew'] = ''; // Ingenting för "Crew" checkbox
+
+
 
 // Spara observation
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -102,9 +125,6 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$evaluation_id]);
 $observations = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-// Include shared footer (version, copyright, JS, Matomo slot)
-require_once __DIR__ . '/php/footer.php';
 ?>
 
 <!DOCTYPE html>
@@ -136,11 +156,41 @@ require_once __DIR__ . '/php/footer.php';
             <strong><?= htmlspecialchars($home_name) ?></strong>
         </div>
         <div class="text-center">
-            <strong><?= htmlspecialchars($game['date']) ?></strong><br>
-            <strong><?= htmlspecialchars($game['time']) ?></strong><br>
-            <span><?= htmlspecialchars($game['league']) ?></span><br>
-            <span><?= htmlspecialchars($game['field']) ?></span>
-        </div>
+    <strong><?= htmlspecialchars($game['date']) ?></strong><br>
+    <strong><?= htmlspecialchars($game['time']) ?></strong><br>
+    <span><?= htmlspecialchars($game['league']) ?></span><br>
+    <span><?= htmlspecialchars($game['field']) ?></span><br>
+<?php
+// Hämta användarnamn som gjort denna evaluation
+$stmt = $pdo->prepare("
+    SELECT u.name 
+    FROM review_evaluation e 
+    JOIN review_user u ON e.user_id = u.id 
+    WHERE e.id = ?
+");
+$stmt->execute([$evaluation_id]);
+$reviewUser = $stmt->fetchColumn();
+
+?>
+
+<!-- Visa vem som gör review -->
+<div class="mt-2">
+    👤 Reviewing as <strong><?= htmlspecialchars($reviewUser) ?></strong>
+</div>
+
+
+
+
+   <?php if (!empty($game['stream_link'])): ?>
+    <div class="mt-2">
+        📺 <a href="<?= htmlspecialchars($game['stream_link']) ?>" target="_blank">Watch Stream</a>
+        <?php if (!empty($game['stream_time'])): ?>
+            <span class="ml-2">⏱ <?= htmlspecialchars($game['stream_time']) ?></span>
+        <?php endif; ?>
+    </div>
+<?php endif; ?>
+</div>
+
         <div class="text-center">
             <?php if ($game['away_logo']): ?>
                 <img src="logo/<?= htmlspecialchars($game['away_logo']) ?>" class="logo"><br>
@@ -162,15 +212,23 @@ require_once __DIR__ . '/php/footer.php';
         <!-- Positions -->
         <table class="table table-sm table-bordered text-center mb-3">
             <thead class="thead-light">
-                <tr><?php foreach ($positions as $pos): ?><th><?= $pos ?></th><?php endforeach; ?></tr>
-            </thead>
-            <tbody>
-                <tr>
-                <?php foreach ($positions as $pos): ?>
-                    <td class="checkbox-cell"><input type="checkbox" name="positions[]" value="<?= $pos ?>"></td>
-                <?php endforeach; ?>
-                </tr>
-            </tbody>
+    <tr><?php foreach ($positions as $pos): ?><th><?= $pos ?></th><?php endforeach; ?></tr>
+</thead>
+<tbody>
+    <tr>
+        <?php foreach ($positions as $pos): ?>
+            <td class="checkbox-cell">
+                <input type="checkbox" name="positions[]" value="<?= $pos ?>">
+            </td>
+        <?php endforeach; ?>
+    </tr>
+    <tr>
+        <?php foreach ($positions as $pos): ?>
+            <td class="text-muted small"><?= htmlspecialchars($names[$pos]) ?></td>
+        <?php endforeach; ?>
+    </tr>
+</tbody>
+
         </table>
 
         <div class="form-row">

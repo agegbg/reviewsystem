@@ -11,6 +11,12 @@
 		},
 		{
 			"path": "../flag_score"
+		},
+		{
+			"path": "../giants"
+		},
+		{
+			"path": "../rule_question"
 		}
 	],
 	"settings": {}

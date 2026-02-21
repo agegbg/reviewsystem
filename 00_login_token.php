@@ -38,22 +38,99 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $token = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
         $expiry = date('Y-m-d H:i:s', time() + 15 * 60);
 
-        $stmt = $pdo->prepare("UPDATE review_user SET login_token = ?, token_expiry = ? WHERE id = ?");
-        $stmt->execute([$token, $expiry, $user_id]);
+   
 
-        // Send email
-        $subject = "Your login code";
-        $message = "Hi $name,\n\nYour login code is: $token\n\nIt is valid for 15 minutes.\n\nRegards,\nZebras System";
-        $headers = "From: no-reply@zebras.se\r\n";
+              // --- Generate secure one-time token for magic link ---
+        $rawToken  = bin2hex(random_bytes(32));               // send to user
+        $tokenHash = hash('sha256', $rawToken);               // store securely
+        $expiry    = date('Y-m-d H:i:s', time() + 15 * 60);
 
-        @mail($user['email'], $subject, $message, $headers);
+        // Store both 6-digit code and link token
+        $stmt = $pdo->prepare("UPDATE review_user 
+                               SET login_token = ?, token_expiry = ?, login_link_hash = ? 
+                               WHERE id = ?");
+        $stmt->execute([$token, $expiry, $tokenHash, $user_id]);
 
-        $_SESSION['login_method'] = 'token_only';
+        // --- Helper: detect client IP behind proxies ---
+        function clientIp(): string {
+            $keys = ['HTTP_CF_CONNECTING_IP','HTTP_X_FORWARDED_FOR','HTTP_X_REAL_IP','REMOTE_ADDR'];
+            foreach ($keys as $k) {
+                if (!empty($_SERVER[$k])) {
+                    $ip = $_SERVER[$k];
+                    if ($k === 'HTTP_X_FORWARDED_FOR' && strpos($ip, ',') !== false) {
+                        $ip = trim(explode(',', $ip)[0]);
+                    }
+                    return $ip;
+                }
+            }
+            return 'unknown';
+        }
+
+        // --- Build magic link ---
+        $baseUrl = rtrim(sprintf('%s://%s%s',
+            (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http',
+            $_SERVER['HTTP_HOST'],
+            rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\')
+        ), '/');
+        $loginUrl = $baseUrl . '/00_verify.php?link=' . urlencode($rawToken);
+
+        // --- Collect client info ---
+        $ip = clientIp();
+        $ua = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
+
+        // --- Build HTML email ---
+        $subject = 'Your Zebras login code';
+        $html = '
+        <!doctype html>
+        <html>
+          <body style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:24px;background:#f6f7f9;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                   style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e8eaee;">
+              <tr>
+                <td style="padding:24px 24px 8px 24px;">
+                  <h2 style="margin:0 0 4px 0;font-size:20px;color:#111;">Hi ' . htmlspecialchars($name) . ',</h2>
+                  <p style="margin:0;color:#333;">Your login code is:</p>
+                  <p style="font-size:28px;font-weight:700;letter-spacing:2px;margin:8px 0 16px 0;color:#111;">' . htmlspecialchars($token) . '</p>
+                  <p style="margin:0 0 20px 0;color:#333;">It is valid for <strong>15 minutes</strong>.</p>
+
+                  <a href="' . htmlspecialchars($loginUrl) . '"
+                     style="display:inline-block;padding:12px 18px;text-decoration:none;background:#111;
+                            color:#fff;border-radius:8px;font-weight:600;">
+                     Log in here
+                  </a>
+                  <p style="margin:12px 0 0 0;color:#666;font-size:13px;">
+                    If you are on the same computer, you can click the button to log in directly.
+                  </p>
+                </td>
+              </tr>
+
+              <tr>
+  <td style="padding:8px 24px 20px 24px;">
+    <p style="margin:0;color:#888;font-size:12px;">
+      This login request started at: <strong>' . date('Y-m-d H:i:s') . '</strong> (server)<br><br>
+      Technical info (for your security):<br>
+      IP: ' . htmlspecialchars($ip) . '<br>
+      Browser: ' . htmlspecialchars($ua) . '<br>
+      Mail sent from: Zebras System
+    </p>
+  </td>
+</tr>
+
+            </table>
+          </body>
+        </html>';
+
+        $headers  = "MIME-Version: 1.0\r\n";
+        $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
+        $headers .= "From: Zebras System <no-reply@zebras.se>\r\n";
+
+        @mail($user['email'], $subject, $html, $headers);
+
+        $_SESSION['login_method'] = 'token_or_link';
         header("Location: 00_verify.php");
         exit;
-    }
 }
-
+}
 // Mask email for display
 function maskEmail($email) {
     $parts = explode("@", $email);

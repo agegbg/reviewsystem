@@ -1,98 +1,200 @@
 <?php
-require_once 'php/db.php';
+/**
+ * File: 504_list_games.php
+ * Description: Lists games with filters for Tournament (league) and Reviewer status (all/none/active).
+ *              Columns: Home, Away, Date, Tournament, Crew, Reviewers (number in button).
+ * Calls: 505_add_crew.php?game_id=ID, 504_show_reviewers.php?game_id=ID
+ * Conventions: English comments, Bootstrap 4.3.1, shared footer at bottom.
+ */
+
+require_once __DIR__ . '/php/session.php';
+require_once __DIR__ . '/php/db.php';
+require_once __DIR__ . '/php/file_register.php';
+updateFileInfo(basename(__FILE__), 'List games with filters and reviewers count');
+
 $pdo = getDatabaseConnection();
 
-// Hämta valt datum från GET, annars visa allt
-$selected_date = $_GET['date'] ?? '';
+// --- Read filters from GET ---
+$tournament = isset($_GET['t']) ? trim($_GET['t']) : 'ALL'; // league filter
+$rf         = isset($_GET['rf']) ? strtolower(trim($_GET['rf'])) : 'all'; // reviewers: all|none|active
+if (!in_array($rf, ['all','none','active'], true)) $rf = 'all';
 
-// Förbered query
-$sql = "
-    SELECT g.*, 
-           t1.name AS home_name, t1.logo AS home_logo,
-           t2.name AS away_name, t2.logo AS away_logo
-    FROM review_game g
-    LEFT JOIN review_team t1 ON g.home_team_id = t1.id
-    LEFT JOIN review_team t2 ON g.away_team_id = t2.id
-";
+// --- Fetch distinct tournaments for dropdown ---
+$tournaments = $pdo->query("
+    SELECT DISTINCT league 
+    FROM review_game 
+    WHERE league IS NOT NULL AND league <> ''
+    ORDER BY league ASC
+")->fetchAll(PDO::FETCH_COLUMN);
 
+// --- Build main query with optional filters ---
+$conditions = [];
 $params = [];
-if ($selected_date) {
-    $sql .= " WHERE g.date = ?";
-    $params[] = $selected_date;
+
+if ($tournament !== 'ALL') {
+    $conditions[] = "g.league = ?";
+    $params[] = $tournament;
+}
+if ($rf === 'active') {
+    $conditions[] = "(SELECT COUNT(*) FROM review_evaluation e WHERE e.game_id = g.id) > 0";
+} elseif ($rf === 'none') {
+    $conditions[] = "(SELECT COUNT(*) FROM review_evaluation e WHERE e.game_id = g.id) = 0";
 }
 
-$sql .= " ORDER BY g.date DESC, g.time DESC";
+$where = $conditions ? ('WHERE ' . implode(' AND ', $conditions)) : '';
 
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$games = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// --- SQL: lägg till review_count ---
+$sql = "
+    SELECT 
+        g.id,
+        g.date,
+        g.league,                         -- shown as Tournament
+        ht.name  AS home_name,
+        at.name  AS away_name,
+        ht.logo  AS home_logo,
+        at.logo  AS away_logo,
+        (SELECT COUNT(*) FROM review_evaluation e WHERE e.game_id = g.id) AS reviewer_count,
+        (SELECT COUNT(*) FROM review_observation o WHERE o.game_id = g.id) AS review_count
+    FROM review_game g
+    LEFT JOIN review_team ht ON g.home_team_id = ht.id
+    LEFT JOIN review_team at ON g.away_team_id = at.id
+    $where
+    ORDER BY g.date DESC, g.id DESC
+";
+
+$st = $pdo->prepare($sql);
+$st->execute($params);
+$games = $st->fetchAll(PDO::FETCH_ASSOC);
 ?>
-
-<!DOCTYPE html>
-<html lang="sv">
+<!doctype html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Matcher</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <meta charset="utf-8">
+    <title>List Games</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Bootstrap 4.3.1 CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/css/bootstrap.min.css">
     <style>
-        .logo { height: 40px; }
+        .table td, .table th { vertical-align: middle; }
+        .logo { height: 22px; width: auto; margin-right: 8px; vertical-align: middle; }
         .nowrap { white-space: nowrap; }
+        .filters .form-control { max-width: 260px; }
+        .filters .form-group { margin-bottom: .5rem; }
+        .btn-tiny { padding: .25rem .5rem; font-size: .825rem; }
     </style>
 </head>
-<body class="p-4">
-<div class="container">
-    <h2>Alla Matcher</h2>
+<body class="bg-light">
+<div class="container my-4">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+        <h1 class="h4 mb-0">Games</h1>
+    </div>
 
-    <form class="form-inline mb-3" method="get">
-        <label class="mr-2">Filtrera på datum:</label>
-        <input type="date" name="date" class="form-control mr-2" value="<?= htmlspecialchars($selected_date) ?>">
-        <button type="submit" class="btn btn-primary btn-sm">Filtrera</button>
-        <a href="505_list_games.php" class="btn btn-secondary btn-sm ml-2">Rensa</a>
+    <!-- Filters -->
+    <form method="get" class="filters mb-3">
+        <div class="card shadow-sm">
+            <div class="card-body py-2">
+                <div class="form-row align-items-end">
+                    <div class="form-group col-sm-6 col-md-4">
+                        <label for="t" class="mb-1">Tournament</label>
+                        <select id="t" name="t" class="form-control" onchange="this.form.submit()">
+                            <option value="ALL"<?= $tournament==='ALL' ? ' selected' : '' ?>>ALL</option>
+                            <?php foreach ($tournaments as $lg): ?>
+                                <option value="<?= htmlspecialchars($lg) ?>"<?= $tournament===$lg ? ' selected' : '' ?>>
+                                    <?= htmlspecialchars($lg) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="form-group col-sm-6 col-md-4">
+                        <label for="rf" class="mb-1">Reviewers</label>
+                        <select id="rf" name="rf" class="form-control" onchange="this.form.submit()">
+                            <option value="all"   <?= $rf==='all'    ? ' selected' : '' ?>>All</option>
+                            <option value="none"  <?= $rf==='none'   ? ' selected' : '' ?>>None</option>
+                            <option value="active"<?= $rf==='active' ? ' selected' : '' ?>>Active</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group col-sm-12 col-md-4">
+                        <button type="submit" class="btn btn-secondary btn-tiny mt-3 mt-md-0">Apply</button>
+                        <a href="504_list_games.php" class="btn btn-light btn-tiny mt-3 mt-md-0">Reset</a>
+                    </div>
+                </div>
+            </div>
+        </div>
     </form>
 
-    <table class="table table-bordered table-sm">
-        <thead class="thead-light">
-        <tr>
-            <th>Hemma</th>
-            <th>Borta</th>
-            <th>Datum</th>
-            <th>Tid</th>
-            <th>Field</th>
-            <th>Level</th>
-            <th>Crew</th>
-        </tr>
-        </thead>
-        <tbody>
-        <?php foreach ($games as $g): ?>
-            <tr>
-                <td class="nowrap">
-                    <?php if ($g['home_logo']): ?>
-                        <img src="logo/<?= htmlspecialchars($g['home_logo']) ?>" class="logo">
-                    <?php endif; ?>
-                    <?= htmlspecialchars($g['home_name']) ?>
-                </td>
-                <td class="nowrap">
-                    <?php if ($g['away_logo']): ?>
-                        <img src="logo/<?= htmlspecialchars($g['away_logo']) ?>" class="logo">
-                    <?php endif; ?>
-                    <?= htmlspecialchars($g['away_name']) ?>
-                </td>
-                <td><?= htmlspecialchars($g['date']) ?></td>
-                <td><?= htmlspecialchars($g['time']) ?></td>
-                <td><?= htmlspecialchars($g['field']) ?></td>
-                <td><?= htmlspecialchars($g['league']) ?></td>
-                <td>
-    <a href="505_add_crew.php?game_id=<?= $g['id'] ?>" class="btn btn-sm btn-primary">
-        Add/Edit Crew
+    <!-- Table -->
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover mb-0">
+                    <thead class="thead-dark">
+                    <tr>
+                        <th>Home</th>
+                        <th>Away</th>
+                        <th style="width:120px;">Date</th>
+                        <th style="width:180px;">Tournament</th>
+                        <th style="width:150px;">Crew</th>
+                        <th style="width:130px;" class="text-right">Reviewers</th>
+                        <th style="width:130px;" class="text-right">Reviews</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <?php if (empty($games)): ?>
+                        <tr><td colspan="6" class="text-center text-muted py-4">No games found.</td></tr>
+                    <?php else: ?>
+                        <?php foreach ($games as $g): ?>
+                            <?php $rc = (int)($g['reviewer_count'] ?? 0); ?>
+                            <tr>
+                                <td class="nowrap">
+                                    <?php if (!empty($g['home_logo'])): ?>
+                                        <img src="logo/<?= htmlspecialchars($g['home_logo']) ?>" class="logo" alt="">
+                                    <?php endif; ?>
+                                    <?= htmlspecialchars($g['home_name'] ?? '—') ?>
+                                </td>
+                                <td class="nowrap">
+                                    <?php if (!empty($g['away_logo'])): ?>
+                                        <img src="logo/<?= htmlspecialchars($g['away_logo']) ?>" class="logo" alt="">
+                                    <?php endif; ?>
+                                    <?= htmlspecialchars($g['away_name'] ?? '—') ?>
+                                </td>
+                                <td><?= htmlspecialchars($g['date'] ?? '') ?></td>
+                                <td><?= htmlspecialchars($g['league'] ?? '') ?></td>
+                                <td>
+                                    <a href="505_add_crew.php?game_id=<?= (int)$g['id'] ?>" class="btn btn-sm btn-primary">
+                                        Add/Edit Crew
+                                    </a>
+                                </td>
+                                <!-- Sista två cellerna i raden: Reviewers + Reviews -->
+<?php $rc = (int)($g['reviewer_count'] ?? 0); ?>
+<?php $rv = (int)($g['review_count'] ?? 0); ?>
+<td class="text-right">
+    <a class="btn btn-sm <?= $rc > 0 ? 'btn-primary' : 'btn-outline-secondary' ?>"
+       href="504_show_reviewers.php?game_id=<?= (int)$g['id'] ?>">
+        (<?= $rc ?>)
     </a>
 </td>
-            </tr>
-        <?php endforeach; ?>
-        <?php if (empty($games)): ?>
-            <tr><td colspan="6" class="text-center text-muted">Inga matcher funna</td></tr>
-        <?php endif; ?>
-        </tbody>
-    </table>
+<td class="text-right">
+    <a class="btn btn-sm <?= $rv > 0 ? 'btn-primary' : 'btn-outline-secondary' ?>"
+       href="504_show_reviews.php?game_id=<?= (int)$g['id'] ?>">
+        (<?= $rv ?>)
+    </a>
+</td>
+
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
+
+<?php
+// Include shared footer (version, copyright, JS, Matomo slot)
+require_once __DIR__ . '/php/footer.php';
+?>
 </body>
 </html>

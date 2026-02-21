@@ -47,9 +47,17 @@ $stmt->execute([$game_id]);
 $crew = $stmt->fetch(PDO::FETCH_ASSOC) ?? [];
 
 $positionMap = [
-    'referee_id' => 'R', 'umpire_id' => 'Ump', 'hl_id' => 'HL', 'lj_id' => 'LJ',
-    'sj_id' => 'SJ', 'fj_id' => 'FJ', 'bj_id' => 'BJ', 'cj_id' => 'C'
+    'referee_id' => 'R',
+    'cj_id' => 'C',
+    'umpire_id' => 'U',
+    'hl_id' => 'DJ', // visa DJ istället för HL
+    'lj_id' => 'LJ',
+    'fj_id' => 'FJ', // bytt plats
+    'sj_id' => 'SJ', // bytt plats
+    'bj_id' => 'BJ'
+    
 ];
+
 $positions = [];
 foreach ($positionMap as $field => $label) {
     if (!empty($crew[$field])) $positions[] = $label;

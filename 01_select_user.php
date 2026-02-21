@@ -8,45 +8,34 @@ $pdo = getDatabaseConnection();
 $error = '';
 $nameInput = '';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $nameInput = trim($_POST['name'] ?? '');
+// ... keep includes as they are
 
-    if (!$nameInput) {
-        $error = "Please enter your name.";
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $emailInput = trim($_POST['email'] ?? '');
+
+    if (!$emailInput) {
+        $error = "Please enter your email.";
     } else {
-        // Look up user
-        $stmt = $pdo->prepare("SELECT * FROM review_user WHERE name = ?");
-        $stmt->execute([$nameInput]);
+        // Look up user by email instead of name
+        $stmt = $pdo->prepare("SELECT * FROM review_user WHERE email = ?");
+        $stmt->execute([$emailInput]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if ($user) {
-            $_SESSION['pending_user_id'] = $user['id'];
-            $_SESSION['pending_user_name'] = $user['name'];
+         if ($user) {
+            // Store pending user info in session
+            $_SESSION['pending_user_id']    = (int)$user['id'];
+            $_SESSION['pending_user_email'] = $user['email'];
+            $_SESSION['pending_user_name']  = $user['name'] ?? null;
 
-            // Look up roles
-            $stmt = $pdo->prepare("
-                SELECT r.code 
-                FROM review_user_roles ur 
-                JOIN review_role r ON ur.role_id = r.id 
-                WHERE ur.user_id = ?
-            ");
-            $stmt->execute([$user['id']]);
-            $roles = $stmt->fetchAll(PDO::FETCH_COLUMN);
-
-            $_SESSION['user_roles'] = $roles;
-
-            if (in_array('admin', $roles)) {
-                header("Location: 00_login_admin.php");
-                exit;
-            } else {
-                header("Location: 00_login_token.php");
-                exit;
-            }
+            // Always continue to token/magic-link step
+            header("Location: 00_login_token.php");
+            exit;
         } else {
-            $error = "No user found with that name.";
+            $error = "No user found with that email.";
         }
     }
 }
+
 
 // Include shared footer (version, copyright, JS, Matomo slot)
 require_once __DIR__ . '/php/footer.php';
@@ -89,21 +78,29 @@ require_once __DIR__ . '/php/footer.php';
 </head>
 <body>
 
-    <div class="form-container">
-        <!-- Header with text and logo side-by-side -->
+   <div class="form-container">
+        <!-- Header with text and logo side-by-side --> 
         <div class="form-header">
-            <h5>Select Your Name</h5>
+            <h5>Sign in with Email</h5>
             <img src="image/zebraz.jpg" alt="Zebraz Logo">
         </div>
 
         <?php if ($error): ?>
-            <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
+            <div class="alert alert-danger" role="alert"><?= htmlspecialchars($error) ?></div>
         <?php endif; ?>
 
-        <form method="post">
+        <form method="post" novalidate>
             <div class="form-group">
-                <label for="name">Your Name</label>
-                <input type="text" name="name" class="form-control" value="<?= htmlspecialchars($nameInput) ?>" required>
+                <label for="email">Email</label>
+                <input
+                    id="email"
+                    type="email"
+                    name="email"
+                    class="form-control"
+                    placeholder="you@example.com"
+                    value="<?= htmlspecialchars($emailInput) ?>"
+                    required
+                >
             </div>
             <button type="submit" class="btn btn-primary btn-block">Continue</button>
         </form>

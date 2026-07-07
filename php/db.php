@@ -1,13 +1,29 @@
 <?php
 
-$table_prefix = 'scoreboard_'; // <-- Här ändrar du för varje projekt
+$configFile = __DIR__ . '/config.local.php';
+if (!file_exists($configFile)) {
+    error_log("Missing local config file: " . $configFile);
+    die("Konfigurationsfil saknas.");
+}
 
+$config = require $configFile;
+if (!is_array($config) || empty($config['database']) || !is_array($config['database'])) {
+    error_log("Invalid database config in: " . $configFile);
+    die("Databaskonfigurationen ar ogiltig.");
+}
 
-// Database connection settings
-$host = 'localhost';        // Hostname for the database
-$user = 's57703_domare';      // Database username
-$pass = '4eSNkBdxMDf23DxaNHGK'; // Database password
-$db = 's57703_domare';        // Database name
+$table_prefix = $config['table_prefix'] ?? 'scoreboard_';
+
+$host = $config['database']['host'] ?? '';
+$user = $config['database']['user'] ?? '';
+$pass = $config['database']['pass'] ?? '';
+$db = $config['database']['name'] ?? '';
+
+if ($host === '' || $user === '' || $db === '') {
+    error_log("Database config is missing host, user, or name.");
+    die("Databaskonfigurationen saknar nodvandiga varden.");
+}
+
 $mysqli = new mysqli($host, $user, $pass, $db);
 
 if ($mysqli->connect_error) {
@@ -16,11 +32,11 @@ if ($mysqli->connect_error) {
 }
 
 if (!$mysqli->set_charset("utf8")) {
-    error_log("Fel vid inställning av teckenuppsättning: " . $mysqli->error);
-    die("Fel vid inställning av teckenuppsättning (mysqli).");
+    error_log("Fel vid installning av teckenuppsattning: " . $mysqli->error);
+    die("Fel vid installning av teckenuppsattning (mysqli).");
 }
 
-/* PDO-anslutning – används av nya systemdelar */
+/* PDO connection used by newer system parts */
 function getDatabaseConnection() {
     static $pdo = null;
 
@@ -40,4 +56,3 @@ function getDatabaseConnection() {
 
     return $pdo;
 }
-?>
